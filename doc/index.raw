@@ -1,7 +1,7 @@
-BuildSystem Documentation
-===================
+Kickstart Documentation
+=======================
 Shaun Harker <sharker@math.rutgers.edu>
-v1.0, 2015-05-21
+v1.0, 2016-02-09
 :toc: right
 :stem: latexmath
 :source-highlighter: highlight.js
@@ -10,19 +10,87 @@ v1.0, 2015-05-21
 == Purpose
 
 This project is intended to help setup portable build systems for projects using CMake.
-We provide several scripts to make this simpler.
+We provide a build script to make this simpler.
 
-== How open source installations work
+Warning: this is not yet a complete functioning example and needs work (I've just copied examples from other files but do not have things in place for this to be a compiling working example yet. This will change.)
+
+== The build script `.install/build.sh`
+
+The central handy-dandy tool we provide is the `build.sh` script,
+which is in our hidden directory `.install`.
+
+In a nutshell, this script simply parses some command line arguments and hands them to CMake in the way it expects.
+The rest of the build process then proceed via CMake. We discuss project design and CMake files later. This is a very
+central tool, so for clarity we give the precise definition in terms of its source code. We will describe the function of the command line arguments below.
+
+....
+# build.sh [--prefix=PREFIX] [--build=BUILDTYPE]    \
+#            [--searchpath=SEARCHPATH] [--test] [CMake arguments]
+#  
+#  Build the project with the supplied configurations,
+#    or else default values.
+#
+#   PREFIX gives the location to install.
+#   BUILDTYPE is either Debug or Release 
+#     (or some other CMake recognizable build type)
+#   SEARCHPATH is an optional location to search for headers 
+#     and libraries (i.e. SEARCHPATH/include and SEARCHPATH/lib)
+#   If --test is supplied then tests will be built.
+#   The default setting for PREFIX is /usr/local unless it is not writable
+#     in which case it is ~/.local.
+#   The default setting for BUILDTYPE is Release
+#   The default setting for SEARCHPATH is to be equal to PREFIX
+#   Additional arguments will be passed to CMake. Any paths in these arguments
+#   should be absolute.
+## Parse command line arguments to get
+#  PREFIX, SEARCHPATH, BUILDTYPE, TESTS, and MASS
+SHELL_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+source $SHELL_DIR/parse.sh
+
+## Set CMake arguments
+CMAKE_ARGS+=" -DCMAKE_INSTALL_PREFIX=${PREFIX}"
+CMAKE_ARGS+=" -DUSER_INCLUDE_PATH=${SEARCHPATH}/include"
+CMAKE_ARGS+=" -DUSER_LIBRARY_PATH=${SEARCHPATH}/lib"
+CMAKE_ARGS+=" -DCMAKE_BUILD_TYPE=$BUILDTYPE"
+CMAKE_ARGS+=$MASS
+
+## Build 
+rm -rf build && mkdir build && cd build || exit 1
+cmake $CMAKE_ARGS .. && make            || exit 1
+
+## Test
+if [[ "$TEST" == "YES" ]]; then
+  make test
+  if [ ! $? -eq 0 ]; then
+    cat Testing/Temporary/LastTest.log
+    exit 1
+  fi
+fi
+
+## Install
+make install || exit 1
+....
+
+
+== Installer script `install.sh`
+Notice that the `build.sh` script is placed in a hidden directory `.install`. This may seem rather odd, since how would anyone know to use it being hidden away? The answer is that it is not expected the a user will directly call the build script. Instead, the developer should write an `install.sh` script, which takes the same arguments as `build.sh` and simply passes them off to build. The reason for this apparent redundancy is because some projects have several subprojects which can be built. An `install.sh` script simply calls the `build.sh` script for each subproject.
+
+
+== Parsing script `.install/parse.sh`
+
+Both the `install.sh` and `.install/build.sh` scripts both accept the same set of arguments: an _installation prefix_, a _search path_, a _build type_, a _test flag_, and any number of additional _mass arguments_. We describe what each of these are in turn. These arguments are parsed from the command line using another script `.install/parse.sh`. We describe the arguments that the parse script (and hence the build and install scripts) are capable of recognizing.
+
+=== Installation Prefixes
 
 An open source installation typically installs itself into certain well-known directories.
 Most commonly, a project will want to install its files in the following locations
 
-```
+....
 /usr/local/include   (header files to be used in conjunction with libraries or as stand-alone)
 /usr/local/lib       (libraries which can be used by other programs)
 /usr/local/bin       (executable files)
 /usr/local/share     (manuals, supplementary files)
-```
+....
 
 Here the prefix `/usr/local` is called the _installation prefix_. The setting of `/usr/local` is a common
 default, and the scripts in this package assume this. For example, on Mac OS X, the popular Homebrew 
@@ -38,9 +106,217 @@ the default. Accordingly, a good installer script should allow us to choose the 
 to set the installation prefix is omitted, it should default to `/usr/local`.
 
 
-== Installation
+=== Search Paths
+
+Open source software often requires other prerequisite open source software to be built first before it can be made. These other projects are called _dependencies_. If dependencies are installed in a default location such as `/usr/local`, then CMake (the build system) usually does not have difficulty locating it. On the other hand, if dependencies are located in non-standard locations (as is often necessary on shared computing resources where the user does not have the rights to install in standard locations) then the build system needs to be told where to look. The scripts we provide are smart enough to try looking in the installation prefix folder for dependencies, but in some cases it might be that there are two non-standard locations where software is being installed. This typically happens when there are two users of an HPC cluster, and one user is installing software in their directory, but using software installed in another user's directory as a dependency. This situation can be accommodated by giving a _search path_ argument to the installer to give it the extra location to find dependencies in.
+
+=== Build Type
+
+Software typically can build in two modes: DEBUG and RELEASE. In DEBUG mode certain extra instructions which impact the efficiency of the program yet help ensure correctness are executed. In RELEASE mode these instructions are omitted. By default, our scripts build in RELEASE mode.
+
+=== Test Flag
+
+Software can be built with the option to run tests. Our build script provides this option by allowing a test flag to be set.
+
+=== Mass Arguments
+
+It is sometimes the case that extra arguments should be handed to the build system (CMake) in addition to the previous ones listed. We call these additional arguments _mass arguments_. By default, no additional arguments are passed.
+
+== Project Design
+
+We propose the following rather standard layout for a project:
+
+....
+Project
+  .install/
+    build.sh
+    parse.sh
+  install.sh
+  CMakeLists.txt
+  README.md
+  LICENSE
+  source
+    CMakeLists.txt
+    program.cpp
+  include
+    program.h
+  tests
+    CMakeLists.txt
+    test1.cpp
+    test2.cpp
+....
+
+In the `README.md` file there should be some indication on how to install, etc, type
+`./install.sh`
+or 
+`./install.sh --prefix=/my/install/prefix`
+
+The `./install.sh` file should call the `./install/build.sh` script on the root directory. This in turn will invoke CMake on the `CMakeLists.txt` file in the root directory. This will then recurse down into the `source/CMakeLists.txt` CMake file in the `source` directory. It will return from the recursion and then recurse into the `tests/CMakeLists.txt` CMake file in the `tests` directory. It will return from the recursion and complete the build.
+
+== Understanding CMake
+
+The best way to understand CMake is to get ahold of some simple examples which work, and experiment as needed. We've included CMakeLists.txt files which work correctly with the build.sh script for this purpose. 
+
+There are some basic concepts worth explaining. In our setup, there is a top-level (i.e. in the root folder) `CMakeLists.txt` file, and two source-level `CMakeList.txt` files.
+
+We explain what happens in the top level CMake file, and then we explain what happens in the source-level CMake files.
+
+=== Top Level CMake File:
+
+==== Rpath
+
+TODO, explain 
+....
+#########
+# rpath #
+#########
+
+set(CMAKE_MACOSX_RPATH 1)
+set(CMAKE_SKIP_BUILD_RPATH  FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE) 
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
+if("${isSystemDir}" STREQUAL "-1")
+   set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+endif("${isSystemDir}" STREQUAL "-1")
+....
+
+==== Compiler Flags
+
+TODO, explain
+....
+#########
+# Flags #
+#########
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -ftemplate-depth=2048")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fprofile-arcs -ftest-coverage")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG" )
+....
+
+==== Passing Macro Definitions
+
+TODO: explain
+....
+###############
+# Definitions #
+###############
+
+add_definitions( -DINSTALLPREFIX="${CMAKE_INSTALL_PREFIX}" )
+message( STATUS "Chose the following prefix: " ${CMAKE_INSTALL_PREFIX} )
+....
+
+==== Finding Packages
+
+TODO, explain
+....
+############
+# Packages #
+############
+
+find_package(Boost 1.58.0 REQUIRED COMPONENTS serialization)
+....
+
+==== Include Directories
+
+TODO, explain
+....
+#######################
+# Include Directories #
+#######################
+
+include_directories ( 
+  ${CMAKE_SOURCE_DIR}/include
+  /usr/local/include 
+  /opt/local/include 
+  ${Boost_INCLUDE_DIRS} 
+  ${USER_INCLUDE_PATH} )
+....
+
+==== Library Directories
+
+TODO, explain
+....
+#######################
+# Library Directories #
+#######################
+
+link_directories ( 
+  ${USER_LIBRARY_PATH} 
+  /usr/local/lib 
+  /opt/local/lib )
+....
+
+==== Setting Output Directories
+
+TODO
+....
+###########
+# Outputs #
+###########
+
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+....
 
 
-```
-./install.sh
-```
+==== Recursing
+
+TODO, explain
+....
+###########
+# Recurse #
+###########
+
+add_subdirectory (source)
+add_subdirectory (tests)
+....
+
+==== Testing
+
+TODO explain
+....
+#########
+# Tests #
+#########
+
+enable_testing()
+add_test( test1 ${CMAKE_SOURCE_DIR}/tests/test.sh test1 )
+add_test( test2 ${CMAKE_SOURCE_DIR}/tests/test.sh test2 )
+add_test( test3 ${CMAKE_SOURCE_DIR}/tests/test.sh test3 )
+add_test( test4 ${CMAKE_SOURCE_DIR}/tests/test.sh test4 )
+add_test( test5 ${CMAKE_SOURCE_DIR}/tests/test.sh test5 )
+add_test( unittests ${CMAKE_SOURCE_DIR}/tests/unittests.sh )
+....
+
+=== Source-Level CMake file
+
+TODO, break the following into separate concepts and explain them each in turn
+....
+set ( LIBS      ${LIBS}
+                ${Boost_LIBRARIES}
+                sqlite3 )
+
+add_library ( libdsgrn STATIC library.cpp )
+set_target_properties( libdsgrn PROPERTIES OUTPUT_NAME dsgrn )
+
+add_library ( libdsgrnshared SHARED library.cpp )
+set_target_properties( libdsgrnshared PROPERTIES OUTPUT_NAME dsgrn )
+target_link_libraries ( libdsgrnshared ${LIBS} )
+
+add_executable ( dsgrn DSGRN.cpp )
+target_link_libraries ( dsgrn libdsgrn ${LIBS} )
+
+install(TARGETS dsgrn libdsgrn libdsgrnshared
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
+....
+
+== Other Goodies
+
+TODO Explain included installer scripts for boost, sqlite, etc.
+
+

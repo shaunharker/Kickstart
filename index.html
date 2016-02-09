@@ -5,7 +5,8 @@
 <!--[if IE]><meta http-equiv="X-UA-Compatible" content="IE=edge"><![endif]-->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="generator" content="Asciidoctor 1.5.3">
-<title>Untitled</title>
+<meta name="author" content="Shaun Harker">
+<title>Kickstart Documentation</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
 <style>
 /* Asciidoctor default stylesheet | MIT License | http://asciidoctor.org */
@@ -417,43 +418,143 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 .show-for-print{display:inherit!important}}
 </style>
 </head>
-<body class="article">
+<body class="article toc2 toc-right">
 <div id="header">
+<h1>Kickstart Documentation</h1>
+<div class="details">
+<span id="author" class="author">Shaun Harker</span><br>
+<span id="email" class="email"><a href="mailto:sharker@math.rutgers.edu">sharker@math.rutgers.edu</a></span><br>
+<span id="revnumber">version 1.0,</span>
+<span id="revdate">2016-02-09</span>
+</div>
+<div id="toc" class="toc2">
+<div id="toctitle">Table of Contents</div>
+<ul class="sectlevel1">
+<li><a href="#_purpose">Purpose</a></li>
+<li><a href="#_the_build_script_code_install_build_sh_code">The build script <code>.install/build.sh</code></a></li>
+<li><a href="#_installer_script_code_install_sh_code">Installer script <code>install.sh</code></a></li>
+<li><a href="#_parsing_script_code_install_parse_sh_code">Parsing script <code>.install/parse.sh</code></a>
+<ul class="sectlevel2">
+<li><a href="#_installation_prefixes">Installation Prefixes</a></li>
+<li><a href="#_search_paths">Search Paths</a></li>
+<li><a href="#_build_type">Build Type</a></li>
+<li><a href="#_test_flag">Test Flag</a></li>
+<li><a href="#_mass_arguments">Mass Arguments</a></li>
+</ul>
+</li>
+<li><a href="#_project_design">Project Design</a></li>
+<li><a href="#_understanding_cmake">Understanding CMake</a>
+<ul class="sectlevel2">
+<li><a href="#_top_level_cmake_file">Top Level CMake File:</a></li>
+<li><a href="#_source_level_cmake_file">Source-Level CMake file</a></li>
+</ul>
+</li>
+<li><a href="#_other_goodies">Other Goodies</a></li>
+</ul>
+</div>
 </div>
 <div id="content">
-<div class="paragraph">
-<p>BuildSystem Documentation</p>
-</div>
-<div class="exampleblock">
-<div class="content">
-<div class="paragraph">
-<p>Shaun Harker &lt;<a href="mailto:sharker@math.rutgers.edu">sharker@math.rutgers.edu</a>&gt;
-v1.0, 2015-05-21
-:toc: right
-:stem: latexmath
-:source-highlighter: highlight.js
-:highlightjs-theme: railscasts</p>
-</div>
-<div class="paragraph">
-<p>== Purpose</p>
-</div>
+<div class="sect1">
+<h2 id="_purpose">Purpose</h2>
+<div class="sectionbody">
 <div class="paragraph">
 <p>This project is intended to help setup portable build systems for projects using CMake.
-We provide several scripts to make this simpler.</p>
+We provide a build script to make this simpler.</p>
 </div>
 <div class="paragraph">
-<p>== How open source installations work</p>
+<p>Warning: this is not yet a complete functioning example and needs work (I&#8217;ve just copied examples from other files but do not have things in place for this to be a compiling working example yet. This will change.)</p>
 </div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_build_script_code_install_build_sh_code">The build script <code>.install/build.sh</code></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The central handy-dandy tool we provide is the <code>build.sh</code> script,
+which is in our hidden directory <code>.install</code>.</p>
+</div>
+<div class="paragraph">
+<p>In a nutshell, this script simply parses some command line arguments and hands them to CMake in the way it expects.
+The rest of the build process then proceed via CMake. We discuss project design and CMake files later. This is a very
+central tool, so for clarity we give the precise definition in terms of its source code. We will describe the function of the command line arguments below.</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre># build.sh [--prefix=PREFIX] [--build=BUILDTYPE]    \
+#            [--searchpath=SEARCHPATH] [--test] [CMake arguments]
+#
+#  Build the project with the supplied configurations,
+#    or else default values.
+#
+#   PREFIX gives the location to install.
+#   BUILDTYPE is either Debug or Release
+#     (or some other CMake recognizable build type)
+#   SEARCHPATH is an optional location to search for headers
+#     and libraries (i.e. SEARCHPATH/include and SEARCHPATH/lib)
+#   If --test is supplied then tests will be built.
+#   The default setting for PREFIX is /usr/local unless it is not writable
+#     in which case it is ~/.local.
+#   The default setting for BUILDTYPE is Release
+#   The default setting for SEARCHPATH is to be equal to PREFIX
+#   Additional arguments will be passed to CMake. Any paths in these arguments
+#   should be absolute.
+## Parse command line arguments to get
+#  PREFIX, SEARCHPATH, BUILDTYPE, TESTS, and MASS
+SHELL_DIR=stem:[( cd "]( dirname "${BASH_SOURCE[0]}" )" &amp;&amp; pwd )
+source $SHELL_DIR/parse.sh
+
+## Set CMake arguments
+CMAKE_ARGS+=" -DCMAKE_INSTALL_PREFIX=${PREFIX}"
+CMAKE_ARGS+=" -DUSER_INCLUDE_PATH=${SEARCHPATH}/include"
+CMAKE_ARGS+=" -DUSER_LIBRARY_PATH=${SEARCHPATH}/lib"
+CMAKE_ARGS+=" -DCMAKE_BUILD_TYPE=$BUILDTYPE"
+CMAKE_ARGS+=$MASS
+
+## Build
+rm -rf build &amp;&amp; mkdir build &amp;&amp; cd build || exit 1
+cmake $CMAKE_ARGS .. &amp;&amp; make            || exit 1
+
+## Test
+if [[ "$TEST" == "YES" ]]; then
+  make test
+  if [ ! $? -eq 0 ]; then
+    cat Testing/Temporary/LastTest.log
+    exit 1
+  fi
+fi
+
+## Install
+make install || exit 1</pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_installer_script_code_install_sh_code">Installer script <code>install.sh</code></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Notice that the <code>build.sh</code> script is placed in a hidden directory <code>.install</code>. This may seem rather odd, since how would anyone know to use it being hidden away? The answer is that it is not expected the a user will directly call the build script. Instead, the developer should write an <code>install.sh</code> script, which takes the same arguments as <code>build.sh</code> and simply passes them off to build. The reason for this apparent redundancy is because some projects have several subprojects which can be built. An <code>install.sh</code> script simply calls the <code>build.sh</code> script for each subproject.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_parsing_script_code_install_parse_sh_code">Parsing script <code>.install/parse.sh</code></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Both the <code>install.sh</code> and <code>.install/build.sh</code> scripts both accept the same set of arguments: an <em>installation prefix</em>, a <em>search path</em>, a <em>build type</em>, a <em>test flag</em>, and any number of additional <em>mass arguments</em>. We describe what each of these are in turn. These arguments are parsed from the command line using another script <code>.install/parse.sh</code>. We describe the arguments that the parse script (and hence the build and install scripts) are capable of recognizing.</p>
+</div>
+<div class="sect2">
+<h3 id="_installation_prefixes">Installation Prefixes</h3>
 <div class="paragraph">
 <p>An open source installation typically installs itself into certain well-known directories.
 Most commonly, a project will want to install its files in the following locations</p>
 </div>
-<div class="listingblock">
+<div class="literalblock">
 <div class="content">
-<pre class="highlight"><code>/usr/local/include   (header files to be used in conjunction with libraries or as stand-alone)
+<pre>/usr/local/include   (header files to be used in conjunction with libraries or as stand-alone)
 /usr/local/lib       (libraries which can be used by other programs)
 /usr/local/bin       (executable files)
-/usr/local/share     (manuals, supplementary files)</code></pre>
+/usr/local/share     (manuals, supplementary files)</pre>
 </div>
 </div>
 <div class="paragraph">
@@ -471,21 +572,311 @@ in system folders. This means the most straightforward path is simply to choose 
 the default. Accordingly, a good installer script should allow us to choose the installation prefix. If the argument
 to set the installation prefix is omitted, it should default to <code>/usr/local</code>.</p>
 </div>
+</div>
+<div class="sect2">
+<h3 id="_search_paths">Search Paths</h3>
 <div class="paragraph">
-<p>== Installation</p>
+<p>Open source software often requires other prerequisite open source software to be built first before it can be made. These other projects are called <em>dependencies</em>. If dependencies are installed in a default location such as <code>/usr/local</code>, then CMake (the build system) usually does not have difficulty locating it. On the other hand, if dependencies are located in non-standard locations (as is often necessary on shared computing resources where the user does not have the rights to install in standard locations) then the build system needs to be told where to look. The scripts we provide are smart enough to try looking in the installation prefix folder for dependencies, but in some cases it might be that there are two non-standard locations where software is being installed. This typically happens when there are two users of an HPC cluster, and one user is installing software in their directory, but using software installed in another user&#8217;s directory as a dependency. This situation can be accommodated by giving a <em>search path</em> argument to the installer to give it the extra location to find dependencies in.</p>
 </div>
-<div class="listingblock">
+</div>
+<div class="sect2">
+<h3 id="_build_type">Build Type</h3>
+<div class="paragraph">
+<p>Software typically can build in two modes: DEBUG and RELEASE. In DEBUG mode certain extra instructions which impact the efficiency of the program yet help ensure correctness are executed. In RELEASE mode these instructions are omitted. By default, our scripts build in RELEASE mode.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_test_flag">Test Flag</h3>
+<div class="paragraph">
+<p>Software can be built with the option to run tests. Our build script provides this option by allowing a test flag to be set.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_mass_arguments">Mass Arguments</h3>
+<div class="paragraph">
+<p>It is sometimes the case that extra arguments should be handed to the build system (CMake) in addition to the previous ones listed. We call these additional arguments <em>mass arguments</em>. By default, no additional arguments are passed.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_project_design">Project Design</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>We propose the following rather standard layout for a project:</p>
+</div>
+<div class="literalblock">
 <div class="content">
-<pre class="highlight"><code>./install.sh</code></pre>
+<pre>Project
+  .install/
+    build.sh
+    parse.sh
+  install.sh
+  CMakeLists.txt
+  README.md
+  LICENSE
+  source
+    CMakeLists.txt
+    program.cpp
+  include
+    program.h
+  tests
+    CMakeLists.txt
+    test1.cpp
+    test2.cpp</pre>
 </div>
+</div>
+<div class="paragraph">
+<p>In the <code>README.md</code> file there should be some indication on how to install, etc, type
+<code>./install.sh</code>
+or
+<code>./install.sh --prefix=/my/install/prefix</code></p>
+</div>
+<div class="paragraph">
+<p>The <code>./install.sh</code> file should call the <code>./install/build.sh</code> script on the root directory. This in turn will invoke CMake on the <code>CMakeLists.txt</code> file in the root directory. This will then recurse down into the <code>source/CMakeLists.txt</code> CMake file in the <code>source</code> directory. It will return from the recursion and then recurse into the <code>tests/CMakeLists.txt</code> CMake file in the <code>tests</code> directory. It will return from the recursion and complete the build.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_understanding_cmake">Understanding CMake</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The best way to understand CMake is to get ahold of some simple examples which work, and experiment as needed. We&#8217;ve included CMakeLists.txt files which work correctly with the build.sh script for this purpose.</p>
+</div>
+<div class="paragraph">
+<p>There are some basic concepts worth explaining. In our setup, there is a top-level (i.e. in the root folder) <code>CMakeLists.txt</code> file, and two source-level <code>CMakeList.txt</code> files.</p>
+</div>
+<div class="paragraph">
+<p>We explain what happens in the top level CMake file, and then we explain what happens in the source-level CMake files.</p>
+</div>
+<div class="sect2">
+<h3 id="_top_level_cmake_file">Top Level CMake File:</h3>
+<div class="sect3">
+<h4 id="_rpath">Rpath</h4>
+<div class="paragraph">
+<p>TODO, explain</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>#########
+# rpath #
+#########
+
+set(CMAKE_MACOSX_RPATH 1)
+set(CMAKE_SKIP_BUILD_RPATH  FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
+if("${isSystemDir}" STREQUAL "-1")
+   set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+endif("${isSystemDir}" STREQUAL "-1")</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_compiler_flags">Compiler Flags</h4>
+<div class="paragraph">
+<p>TODO, explain</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>#########
+# Flags #
+#########
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -ftemplate-depth=2048")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -fprofile-arcs -ftest-coverage")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG" )</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_passing_macro_definitions">Passing Macro Definitions</h4>
+<div class="paragraph">
+<p>TODO: explain</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>###############
+# Definitions #
+###############
+
+add_definitions( -DINSTALLPREFIX="${CMAKE_INSTALL_PREFIX}" )
+message( STATUS "Chose the following prefix: " ${CMAKE_INSTALL_PREFIX} )</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_finding_packages">Finding Packages</h4>
+<div class="paragraph">
+<p>TODO, explain</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>############
+# Packages #
+############
+
+find_package(Boost 1.58.0 REQUIRED COMPONENTS serialization)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_include_directories">Include Directories</h4>
+<div class="paragraph">
+<p>TODO, explain</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>#######################
+# Include Directories #
+#######################
+
+include_directories (
+  ${CMAKE_SOURCE_DIR}/include
+  /usr/local/include
+  /opt/local/include
+  ${Boost_INCLUDE_DIRS}
+  ${USER_INCLUDE_PATH} )</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_library_directories">Library Directories</h4>
+<div class="paragraph">
+<p>TODO, explain</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>#######################
+# Library Directories #
+#######################
+
+link_directories (
+  ${USER_LIBRARY_PATH}
+  /usr/local/lib
+  /opt/local/lib )</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_setting_output_directories">Setting Output Directories</h4>
+<div class="paragraph">
+<p>TODO</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>###########
+# Outputs #
+###########
+
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_recursing">Recursing</h4>
+<div class="paragraph">
+<p>TODO, explain</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>###########
+# Recurse #
+###########
+
+add_subdirectory (source)
+add_subdirectory (tests)</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_testing">Testing</h4>
+<div class="paragraph">
+<p>TODO explain</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>#########
+# Tests #
+#########
+
+enable_testing()
+add_test( test1 ${CMAKE_SOURCE_DIR}/tests/test.sh test1 )
+add_test( test2 ${CMAKE_SOURCE_DIR}/tests/test.sh test2 )
+add_test( test3 ${CMAKE_SOURCE_DIR}/tests/test.sh test3 )
+add_test( test4 ${CMAKE_SOURCE_DIR}/tests/test.sh test4 )
+add_test( test5 ${CMAKE_SOURCE_DIR}/tests/test.sh test5 )
+add_test( unittests ${CMAKE_SOURCE_DIR}/tests/unittests.sh )</pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_source_level_cmake_file">Source-Level CMake file</h3>
+<div class="paragraph">
+<p>TODO, break the following into separate concepts and explain them each in turn</p>
+</div>
+<div class="literalblock">
+<div class="content">
+<pre>set ( LIBS      ${LIBS}
+                ${Boost_LIBRARIES}
+                sqlite3 )
+
+add_library ( libdsgrn STATIC library.cpp )
+set_target_properties( libdsgrn PROPERTIES OUTPUT_NAME dsgrn )
+
+add_library ( libdsgrnshared SHARED library.cpp )
+set_target_properties( libdsgrnshared PROPERTIES OUTPUT_NAME dsgrn )
+target_link_libraries ( libdsgrnshared ${LIBS} )
+
+add_executable ( dsgrn DSGRN.cpp )
+target_link_libraries ( dsgrn libdsgrn ${LIBS} )
+
+install(TARGETS dsgrn libdsgrn libdsgrnshared
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_other_goodies">Other Goodies</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>TODO Explain included installer scripts for boost, sqlite, etc.</p>
 </div>
 </div>
 </div>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2016-02-09 13:46:00 EST
+Version 1.0<br>
+Last updated 2016-02-09 14:46:00 EST
 </div>
 </div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.9.1/styles/railscasts.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.9.1/highlight.min.js"></script>
+<script>hljs.initHighlighting()</script>
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [["\\(", "\\)"]],
+    displayMath: [["\\[", "\\]"]],
+    ignoreClass: "nostem|nolatexmath"
+  },
+  asciimath2jax: {
+    delimiters: [["\\$", "\\$"]],
+    ignoreClass: "nostem|noasciimath"
+  },
+  TeX: { equationNumbers: { autoNumber: "none" } }
+});
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.5.3/MathJax.js?config=TeX-MML-AM_HTMLorMML"></script>
 </body>
 </html>
