@@ -1,0 +1,46 @@
+BuildSystem Documentation
+===================
+Shaun Harker <sharker@math.rutgers.edu>
+v1.0, 2015-05-21
+:toc: right
+:stem: latexmath
+:source-highlighter: highlight.js
+:highlightjs-theme: railscasts
+
+== Purpose
+
+This project is intended to help setup portable build systems for projects using CMake.
+We provide several scripts to make this simpler.
+
+== How open source installations work
+
+An open source installation typically installs itself into certain well-known directories.
+Most commonly, a project will want to install its files in the following locations
+
+```
+/usr/local/include   (header files to be used in conjunction with libraries or as stand-alone)
+/usr/local/lib       (libraries which can be used by other programs)
+/usr/local/bin       (executable files)
+/usr/local/share     (manuals, supplementary files)
+```
+
+Here the prefix `/usr/local` is called the _installation prefix_. The setting of `/usr/local` is a common
+default, and the scripts in this package assume this. For example, on Mac OS X, the popular Homebrew 
+package manager installs into `/usr/local`. (Incidentally, it whines about other stuff installed in there,
+but this can be safely ignored unless you are specifically double-installing something.)
+
+On other systems, for example an HPC cluster, it is very unlikely you will be able to install into `/usr/local`.
+The reason is because this is a system folder which you will not have the privileges to write to. System
+administrators, who may not have the time to accurately assess what interactions a proposed installation may have to
+system stability (it is their job not to trust the user who says it is safe) are very hesitant about changing anything
+in system folders. This means the most straightforward path is simply to choose a different installation prefix than
+the default. Accordingly, a good installer script should allow us to choose the installation prefix. If the argument 
+to set the installation prefix is omitted, it should default to `/usr/local`.
+
+
+== Installation
+
+
+```
+./install.sh
+```
